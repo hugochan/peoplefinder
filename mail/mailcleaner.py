@@ -4,7 +4,6 @@ import mailbox
 import re
 import os
 import pickle
-import pdb
 
 class MailCleaner(object):
     EMAIL_PATTERN1 = r'<(.*)>'
@@ -44,7 +43,7 @@ class MailCleaner(object):
         return [emailaddr, username]
 
     def test_reg(self):
-        collector = self.get_emailaddr()
+        collector = self.get_emailaddrs()
         for each in collector:
             print self.handle_reg(each)
 
@@ -73,18 +72,17 @@ class MailCleaner(object):
                         contact_table.update({each_contact:tmp_contact_set})
         return [mapping_table, contact_table]
 
-    def save_emailaddrs(self, foldname, *emailaddrs):
+    def save_emailaddrs(self, emailaddrs, foldername):
         """
-        save your data under the fold named data by default
+        save your data under the folder named data by default
         """
-        import pdb;pdb.set_trace()
         mapping_table = pickle.dumps(emailaddrs[0])
         contact_table = pickle.dumps(emailaddrs[1])
-        if not os.path.exists(os.path.join(self.DATA_ROOT, foldname)):
-            os.makedirs(os.path.join(self.DATA_ROOT, foldname))
+        if not os.path.exists(os.path.join(self.DATA_ROOT, foldername)):
+            os.makedirs(os.path.join(self.DATA_ROOT, foldername))
         try:
-            with open(os.path.join(self.DATA_ROOT, foldname, 'mapping_table.dat'), 'w') as f1, \
-                open(os.path.join(self.DATA_ROOT, foldname, 'contact_table.dat'), 'w') as f2:
+            with open(os.path.join(self.DATA_ROOT, foldername, 'mapping_table.dat'), 'w') as f1, \
+                open(os.path.join(self.DATA_ROOT, foldername, 'contact_table.dat'), 'w') as f2:
                 f1.write(mapping_table)
                 f2.write(contact_table)
         except Exception, e:
@@ -92,10 +90,10 @@ class MailCleaner(object):
             return False
         return True
 
-    def load_emailaddrs(self, foldname):
+    def load_emailaddrs(self, foldername):
         try:
-            with open(os.path.join(self.DATA_ROOT, foldname, 'mapping_table.dat'), 'r') as f1, \
-                open(os.path.join(self.DATA_ROOT, foldname, 'contact_table.dat'), 'r') as f2:
+            with open(os.path.join(self.DATA_ROOT, foldername, 'mapping_table.dat'), 'r') as f1, \
+                open(os.path.join(self.DATA_ROOT, foldername, 'contact_table.dat'), 'r') as f2:
                 mapping_table = pickle.loads(f1.read())
                 contact_table = pickle.loads(f2.read())
         except Exception, e:
@@ -110,9 +108,8 @@ if __name__ == '__main__':
                 'umich_takeout/Mail/Unread.mbox']
     stoplist = ['',]
     mc = MailCleaner(mbox_path, stoplist)
-    # mc.get_emailaddrs()
-    # mc.test_reg()
+    mc.get_emailaddrs()
+    mc.test_reg()
     emailaddrs = mc.clean_emailaddrs()
-    mc.save_emailaddrs('umich', emailaddrs)
+    mc.save_emailaddrs(emailaddrs, 'umich')
     [mapping_table, contact_table] = mc.load_emailaddrs('umich')
-    import pdb;pdb.set_trace()
