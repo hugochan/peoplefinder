@@ -9,11 +9,11 @@ class MailCleaner(object):
     EMAIL_PATTERN1 = r'<(.*)>'
     EMAIL_PATTERN2 = r'^[\s]*([^\s]*)[\s]*'
     EMAIL_PATTERN3 = r'^[\s]*[^()]*[\s]*'
+    DEFAULT_STOP_PATTERN = (r'(?:-|grad|app|notif(?:y|ication)|noreply|service|help|support|info|party|city|employ|pay|regist|admi(?:s|n)|(?:no|every)body)|@(?:github|youtube).com',)
     DATA_ROOT = './data/'
 
-    def __init__(self, path, stoplist):
+    def __init__(self, path):
         self.mbox = [mailbox.mbox(each) for each in path]
-        self.stoplist = stoplist
         self.mails_count = 0
 
     def get_emailaddrs(self):
@@ -31,22 +31,22 @@ class MailCleaner(object):
                     collector.update(each_record['Cc'].split(','))
         return collector
 
-    def is_auto_sent_group(self, mail_list):
+    def is_auto_sent_group(self, mail_list, stoplist):
         """
         tell if it is an auto-sent group mail
         which may depend on your requirement
         """
         for each_receiver in mail_list:
             emailaddr, username = self.handle_reg(each_receiver)
-            if emailaddr and not self.is_stopword(emailaddr):
+            if emailaddr and not self.is_stopword(emailaddr, stoplist):
                 return False
         return True
 
-    def is_stopword(self, string):
+    def is_stopword(self, string, stoplist):
         """
         tell if it is a stop word
         """
-        for each_stop_pattern in self.stoplist:
+        for each_stop_pattern in stoplist:
             if re.findall(each_stop_pattern, string, re.I):
                 return True
         return False
@@ -72,7 +72,7 @@ class MailCleaner(object):
         for each in collector:
             print self.handle_reg(each)
 
-    def clean_emailaddrs(self):
+    def clean_emailaddrs(self, stoplist):
         mapping_table = {} # username-email mapping table
         contact_table = {} # contact list
         for each_mbox in self.mbox:
@@ -84,13 +84,13 @@ class MailCleaner(object):
                 if each_record.has_key('From'):
                     tmp_mail_from = each_record['From'].split(',')
                     # filter auto-sent group emails
-                    if self.is_auto_sent_group(tmp_mail_from):
+                    if self.is_auto_sent_group(tmp_mail_from, stoplist):
                         continue
                     tmp_raw_contact_set.update(tmp_mail_from)
                 if each_record.has_key('To'):
                     tmp_mail_to = each_record['To'].split(',')
                     # filter auto-sent group emails
-                    if self.is_auto_sent_group(tmp_mail_to):
+                    if self.is_auto_sent_group(tmp_mail_to, stoplist):
                         continue
                     tmp_raw_contact_set.update(tmp_mail_to)
                 if each_record.has_key('Cc'):
@@ -98,7 +98,7 @@ class MailCleaner(object):
 
                 for each_raw_contact in tmp_raw_contact_set:
                     emailaddr, username = self.handle_reg(each_raw_contact)
-                    if emailaddr and not self.is_stopword(emailaddr):
+                    if emailaddr and not self.is_stopword(emailaddr, stoplist):
                         tmp_contact_set.update([emailaddr])
                         mapping_table[emailaddr] = username
 
