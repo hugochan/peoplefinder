@@ -12,3 +12,5 @@
 */umich_takeout/
 *.conf
 *.pdf
+*.png
+*.dot
