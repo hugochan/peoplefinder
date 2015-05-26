@@ -109,6 +109,9 @@ class RenRen(object):
 
 
     def get_friends(self, uid=None):
+        #########to do################
+        # uid & uname
+        ##############################
         uid = uid or self.uid
 
         URL = 'http://friend.renren.com/GetFriendList.do?curpage={0}&id=' + str(uid)
@@ -125,7 +128,7 @@ class RenRen(object):
 
 
         friends_xpath = '//div[@id="list-results"]//li/p/a/@href'
-        all_friends = []
+        all_friends = {}
 
 
         first_page_friends = [f.split('=')[1] for f in tree.xpath(friends_xpath)]
@@ -159,24 +162,32 @@ class RenRen(object):
         return all_friends
 
     def search_profiles(self, keyword, topnum):
+        # cannot get enough pages
+        # import pdb;pdb.set_trace()
         URL = "http://browse.renren.com/s/all?from=opensearch&q=%s#qt=%s/tindex=2/"%(keyword, keyword)
         page_index = 1
         profile_count = 0
-        profile_list = []
-        import pdb;pdb.set_trace()
+        profile_table = {}
         while True:
             cur_URL = URL + 'curpage=%s'%page_index
             try:
                 search_page = self.opener.open(cur_URL.format(0))
                 tree = etree.parse(search_page, etree.HTMLParser())
-                for each in tree.xpath('//a/@data-id'): # ?????????? same every page
-                    profile_list.append(each)
+                uid = tree.xpath('//a/@data-id') # ?????????? same every page
+                uname = 'test'
+                #########to do################
+                # uid & uname
+                ##############################
+                if not uid:
+                    return profile_table
+                for each in uid:
+                    profile_table.update({each:uname})
                     profile_count += 1
                     if profile_count >= topnum:
-                        return profile_list
+                        return profile_table
             except Exception, e:
                 print e
-                return profile_list
+                return profile_table
             page_index += 1
 
 class RenRenRelationShip(object):
