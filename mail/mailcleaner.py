@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import email
 import mailbox
-import pickle
+import chardet
 import re
 import os
 
@@ -9,7 +10,7 @@ class MailCleaner(object):
     EMAIL_PATTERN1 = r'<(.*)>'
     EMAIL_PATTERN2 = r'^[\s]*([^\s]*)[\s]*'
     EMAIL_PATTERN3 = r'^[\s]*[^()]*[\s]*'
-    DEFAULT_STOP_PATTERN = (r'(?:-|grad|app|notif(?:y|ication)|noreply|service|help|support|info|party|city|employ|pay|regist|admi(?:s|n)|(?:no|every)body)|@(?:github|youtube).com',)
+    DEFAULT_STOP_PATTERN = (r'(?:-|grad|app|notif(?:y|ication)|noreply|service|sail|business|airchina|help|gift|support|info|party|city|employ|pay|regist|admi(?:s|n)|(?:no|every)body)|(?:github|youtube|google|baidu|amazon|eefocus|zhaoshangju|elecfans|360buy|altera|7days(?:inn|room|)|verifylist|iar|wps|pingan|zhenpin|dangdang|xfcom)',)
     DATA_ROOT = './data/'
 
     def __init__(self, path):
@@ -18,7 +19,8 @@ class MailCleaner(object):
 
     def get_emailaddrs(self):
         """
-        return all the email addresses involved in from, to or cc field
+        Return all the email addresses involved in from, to or cc field
+        might be dirty data
         """
         collector = set()
         for each_mbox in self.mbox:
@@ -33,25 +35,47 @@ class MailCleaner(object):
 
     def is_auto_sent_group(self, mail_list, stoplist):
         """
-        tell if it is an auto-sent group mail
+        Tell if it is an auto-sent group mail
         which may depend on your requirement
         """
         for each_receiver in mail_list:
-            emailaddr, username = self.handle_reg(each_receiver)
+            emailaddr, username = self.parseaddr(each_receiver)
             if emailaddr and not self.is_stopword(emailaddr, stoplist):
                 return False
         return True
 
     def is_stopword(self, string, stoplist):
         """
-        tell if it is a stop word
+        Tell if it is a stop word
         """
         for each_stop_pattern in stoplist:
             if re.findall(each_stop_pattern, string, re.I):
                 return True
         return False
 
+    def parseaddr(self, string):
+        """
+        Parse email addresses to get username and addresses
+        """
+        username, emailaddr = email.utils.parseaddr(string)
+        if '1098796184' in emailaddr:
+            import pdb;pdb.set_trace()
+        try:
+            if chardet.detect(username)['encoding'] == 'ascii':
+                # parse username decoded like '=?gbk?Q?=CF=E0=C6=AC?='
+                dh = email.Header.decode_header(email.Header.Header(username))
+                username = dh[0][0]
+                if dh[0][1] and dh[0][1] != 'utf-8':
+                    username = username.decode(dh[0][1]).encode('utf-8')
+        except Exception, e:
+            print e
+            return [emailaddr, None]
+        return [emailaddr, username]
+
     def handle_reg(self, string):
+        """
+        Parse email addresses, replaced by the parseaddr method
+        """
         ret = re.findall(self.EMAIL_PATTERN1, string)
         if not ret:
             ret = re.findall(self.EMAIL_PATTERN2, string)
@@ -70,7 +94,7 @@ class MailCleaner(object):
     def test_reg(self):
         collector = self.get_emailaddrs()
         for each in collector:
-            print self.handle_reg(each)
+            print self.parseaddr(each)
 
     def clean_emailaddrs(self, stoplist):
         mapping_table = {} # username-email mapping table
@@ -97,7 +121,7 @@ class MailCleaner(object):
                     tmp_raw_contact_set.update(each_record['Cc'].split(','))
 
                 for each_raw_contact in tmp_raw_contact_set:
-                    emailaddr, username = self.handle_reg(each_raw_contact)
+                    emailaddr, username = self.parseaddr(each_raw_contact)
                     if emailaddr and not self.is_stopword(emailaddr, stoplist):
                         tmp_contact_set.update([emailaddr])
                         mapping_table[emailaddr] = username
@@ -107,33 +131,4 @@ class MailCleaner(object):
                         contact_table[each_contact].update(tmp_contact_set)
                     except:
                         contact_table.update({each_contact:tmp_contact_set})
-        return [mapping_table, contact_table]
-
-    def save_emailaddrs(self, emailaddrs, foldername):
-        """
-        save your data under the folder named data by default
-        """
-        mapping_table = pickle.dumps(emailaddrs[0])
-        contact_table = pickle.dumps(emailaddrs[1])
-        if not os.path.exists(os.path.join(self.DATA_ROOT, foldername)):
-            os.makedirs(os.path.join(self.DATA_ROOT, foldername))
-        try:
-            with open(os.path.join(self.DATA_ROOT, foldername, 'mapping_table.dat'), 'w') as f1, \
-                open(os.path.join(self.DATA_ROOT, foldername, 'contact_table.dat'), 'w') as f2:
-                f1.write(mapping_table)
-                f2.write(contact_table)
-        except Exception, e:
-            print e
-            return False
-        return True
-
-    def load_emailaddrs(self, foldername):
-        try:
-            with open(os.path.join(self.DATA_ROOT, foldername, 'mapping_table.dat'), 'r') as f1, \
-                open(os.path.join(self.DATA_ROOT, foldername, 'contact_table.dat'), 'r') as f2:
-                mapping_table = pickle.loads(f1.read())
-                contact_table = pickle.loads(f2.read())
-        except Exception, e:
-            print e
-            return False
         return [mapping_table, contact_table]
