@@ -1,57 +1,137 @@
 # -*- coding: utf-8 -*-
 
 import jieba
+import pickle
+import os
 import sys
 sys.path.extend(['mail', 'social/linkedin', 'social/renren'])
 from mailcleaner import MailCleaner
 from visualgraph import VisualGraph
 from renren import RenRen
+PROJECT_ROOT = os.path.split(os.path.realpath(__file__))[0]
 
 class PeopleFinder(object):
     def __init__(self, mail_handler, social_handler):
         self.mail_handler = mail_handler
         self.social_handler = social_handler
 
-    def create_email_network(self, show_and_save=False):
-        self.email_mapping_table, self.email_contact_table = self.mail_handler.clean_emailaddrs(\
-                                                            mc.DEFAULT_STOP_PATTERN)
-        # mc.save_emailaddrs([self.email_mapping_table, self.email_contact_table], 'mail/umich')
+    def create_email_network(self, local=False, show_and_save=False):
+        if not local:
+            self.email_mapping_table, self.email_contact_table = self.mail_handler.clean_emailaddrs(\
+                                                                mc.DEFAULT_STOP_PATTERN)
+            # save data
+            self.save_data([self.email_mapping_table, self.email_contact_table], 'email')
+        else:
+            self.email_mapping_table, self.email_contact_table = self.load_data('email')
         if show_and_save:
             vg = VisualGraph()
             vg.import_data(self.email_contact_table)
             vg.save_graph('tmp_mail.png')
-        return self.email_mapping_table
+        return self.email_mapping_table, self.email_contact_table
 
-    def create_social_network(self, mapping_table, show_and_save=False):
-        top_num = 20
-        first_circle_candidates = {}
-        self.social_friend_table = {} # friend list
-        for emailaddr, username in mapping_table.iteritems():
-            candidates_table = self.social_handler.search_profiles(emailaddr, top_num)
-            if not candidates_table:
-                search_name = username and username or emailaddr.split('@')[0]
-                candidates_table = self.social_handler.search_profiles(search_name, top_num)
-            first_circle_candidates.update(candidates_table)
+    def create_social_network(self, mapping_table, local=False, show_and_save=False):
+        if not local:
+            top_num = 20
+            first_circle_candidates = {}
+            self.social_friend_table = {} # friend list
+            for emailaddr, username in mapping_table.iteritems():
+                candidates_table = self.social_handler.search_profiles(emailaddr, top_num)
+                if not candidates_table:
+                    search_name = username and username or emailaddr.split('@')[0]
+                    candidates_table = self.social_handler.search_profiles(search_name, top_num)
+                first_circle_candidates.update(candidates_table)
 
-        self.social_mapping_table = first_circle_candidates.copy()
-        for each_uid, each_uname in first_circle_candidates.keys():
-            all_friends = self.social_handler.get_friends(each_uid)
-            self.social_mapping_table.update(all_friends)
-            self.social_friend_table.update({each_uid: set(all_friends.keys())})
-            for each_friend in all_friends.keys():
-                try:
-                    self.social_friend_table[each_friend].update([each_uid])
-                except:
-                    self.social_friend_table.update({each_friend: set([each_uid])})
+            self.social_mapping_table = first_circle_candidates.copy()
+            for each_uid in first_circle_candidates.keys():
+                all_friends = self.social_handler.get_friends(each_uid)
+                self.social_mapping_table.update(all_friends)
+                self.social_friend_table.update({each_uid: set(all_friends.keys())})
+                for each_friend in all_friends.keys():
+                    try:
+                        self.social_friend_table[each_friend].update([each_uid])
+                    except:
+                        self.social_friend_table.update({each_friend: set([each_uid])})
+            # save data
+            import pdb;pdb.set_trace()
+            self.save_data([self.social_mapping_table, self.social_friend_table], 'social')
+        else:
+            self.social_mapping_table, self.social_friend_table = self.load_data('social')
+
+        if show_and_save:
+            pass
         return self.social_mapping_table, self.social_friend_table
 
+    def save_data(self, data, data_type):
+        """
+        Save your data in local environment
+        """
+        path_root = os.path.join(PROJECT_ROOT, 'data', data_type)
+        if not os.path.exists(path_root):
+            os.makedirs(path_root)
+        try:
+            with open(os.path.join(path_root, 'mapping_table.dat'), 'w') as f1, \
+                open(os.path.join(path_root, 'contact_table.dat'), 'w') as f2:
+                mapping_table = pickle.dumps(data[0])
+                contact_table = pickle.dumps(data[1])
+                f1.write(mapping_table)
+                f2.write(contact_table)
+        except Exception, e:
+            print e
+            return False
+        return True
+
+    def load_data(self, data_type):
+        path_root = os.path.join(PROJECT_ROOT, 'data', data_type)
+        try:
+            with open(os.path.join(path_root, 'mapping_table.dat'), 'r') as f1, \
+                open(os.path.join(path_root, 'contact_table.dat'), 'r') as f2:
+                mapping_table = pickle.loads(f1.read())
+                contact_table = pickle.loads(f2.read())
+        except Exception, e:
+            print e
+            return False
+        return [mapping_table, contact_table]
+
+    def load_social_data(self):
+        data_root = os.path.join(PROJECT_ROOT, 'data')
+        try:
+            with open(os.path.join(data_root, 'social_mapping_table.dat'), 'r') as f1, \
+                open(os.path.join(data_root, 'social_friend_table.dat'), 'r') as f2:
+                social_mapping_table = pickle.loads(f1.read())
+                social_friend_table = pickle.loads(f2.read())
+        except Exception, e:
+            print e
+            return False
+        return [social_mapping_table, social_friend_table]
+
+    def do_recommend(self, email_uid, top_num=10):
+        candidates = {}
+        for each_social_uid in self.social_mapping_table.keys():
+            sim = self.calc_entry_sim_overlap(email_uid, each_social_uid)
+            candidates.update({each_social_uid: sim})
+        candidates = sorted(candidates.iteritems(), key=lambda d:d[1], reverse=True)
+        return candidates[:top_num]
+
     def calc_entry_sim_overlap(self, email_uid, social_uid):
-        self.email_contact_table[email_uid]
+        RATIO = 0.5
+        # neighborhood_optimal_match = {}
+        overlap_score = 0.0
+        total_score = 0.0
+        for each_neighbor in self.email_contact_table[email_uid]:
+            optimal_match = self.get_optimal_socials([each_neighbor, \
+                                self.email_mapping_table[each_neighbor]])
+            # neighborhood_optimal_match[optimal_match[0]] = optimal_match[1]
+            total_score += optimal_match[1]
+            if optimal_match[0] in self.social_friend_table[social_uid]:
+                overlap_score += optimal_match[1]
 
-
-        self.social_friend_table[social_uid]
-
-
+        # method 1
+        sim_overlap_a = total_score and overlap_score/total_score or 0.0
+        # method 2
+        count = len(self.social_friend_table[social_uid])
+        sim_overlap_b = count and overlap_score/count or 0.0
+        sim_overlap = sim_overlap_a*RATIO + sim_overlap_b*(1-RATIO)
+        return sim_overlap
 
     def get_optimal_socials(self, email_entry):
         result_list = {}
@@ -59,13 +139,15 @@ class PeopleFinder(object):
         for each_uid, each_uname in self.social_mapping_table.iteritems():
             sim = self.calc_profile_sim(email_pf, each_uname)
             result_list.update({each_uid: sim})
-            ## to do
+        optimal_match = sorted(result_list.iteritems(), key=lambda d:d[1], reverse=True)[0]
+        return optimal_match
 
     def calc_profile_sim(self, email_pf, social_pf):
         sim = self.calc_string_sim(email_pf, social_pf)
         return sim
 
     def calc_string_sim(self, a, b):
+        import pdb;pdb.set_trace()
         try:
             a_seg_list = [x for x in jieba.cut(a, cut_all=False)]
             b_seg_list = [x for x in jieba.cut(b, cut_all=False)]
@@ -81,20 +163,3 @@ class PeopleFinder(object):
         sim = union_count and len(a&b)/union_count or 0
         return sim
 
-if __name__ == '__main__':
-    email = "1256679551@qq.com"
-    passwd = '1993042887564299'
-    test_mapping_table = {'1256679551@qq.com':'陈田'}
-    # renren = RenRen(email, passwd)
-    renren = None
-    pf = PeopleFinder(None, renren)
-    # import pdb;pdb.set_trace()
-    # V, E = pf.create_social_network(test_mapping_table)
-    # print V
-    # print E
-
-    # import jieba
-    # seg_list = jieba.cut("我来到北京清华大学", cut_all=True)
-    # for each in seg_list:
-    #     print each
-    # # print "Full Mode: " + "/ ".join(seg_list)  # 全模式
