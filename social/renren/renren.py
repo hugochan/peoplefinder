@@ -12,6 +12,7 @@ import cookielib
 from lxml import etree
 from utils import retry, gtimeout
 from selenium import webdriver # parse dynamic web pages
+import time
 
 class FriendsStore(object):
     __slots__ = ('uid', 'level', 'parent', 'friends')
@@ -111,7 +112,7 @@ class RenRen(object):
         all_friends = {}
 
         uid_friends = [f.split('=')[1] for f in tree.xpath(uid_friends_xpath)]
-        uname_friends = [f for f in tree.xpath(uname_friends_xpath)]
+        uname_friends = [f.encode('utf-8') for f in tree.xpath(uname_friends_xpath)]
         all_friends.update(dict(zip(uid_friends, uname_friends)))
 
         @retry()
@@ -121,7 +122,7 @@ class RenRen(object):
             tree = etree.parse(html, parse)
             uid_friends = [f.split('=')[1]
                            for f in tree.xpath(uid_friends_xpath)]
-            uname_friends = [f for f in tree.xpath(uname_friends_xpath)]
+            uname_friends = [f.encode('utf-8') for f in tree.xpath(uname_friends_xpath)]
             return dict(zip(uid_friends, uname_friends))
 
         # this is sync version
@@ -144,12 +145,12 @@ class RenRen(object):
         page_index = 1
         profile_count = 0
         profile_table = {}
-
         while True:
             cur_URL = URL + 'curpage=%s' % page_index
             try:
                 # selenium
                 driver.get(cur_URL)
+                time.sleep(2) # import time delay, set according to your environment
                 html = driver.page_source
                 uid_uname_list = re.findall(r'<strong><a target.*id=(\d+).*>(.*)</a></strong>', html.encode('utf-8'))
                 if not uid_uname_list:

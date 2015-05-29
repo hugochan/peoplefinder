@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import time
 import sys
 sys.path.extend(['mail', 'social/linkedin', 'social/renren'])
 from mailcleaner import MailCleaner
@@ -39,6 +40,15 @@ class PeopleFinder(object):
             self.social_friend_table = {} # friend list
 
             driver = webdriver.Firefox() # assume you have firefox on your local computer
+            # login first
+            driver.get('http://renren.com')
+            username = driver.find_element_by_id("email")
+            password = driver.find_element_by_id("password")
+            username.send_keys(self.social_handler.email)
+            password.send_keys(self.social_handler.password)
+            driver.find_element_by_id("login").click()
+            time.sleep(3) # import time delay
+
             for emailaddr, username in mapping_table.iteritems():
                 candidates_table = self.social_handler.search_profiles(emailaddr, top_num, driver)
                 if not candidates_table:
@@ -46,7 +56,7 @@ class PeopleFinder(object):
                     candidates_table = self.social_handler.search_profiles(search_name, top_num, driver)
                 first_circle_candidates.update(candidates_table)
             driver.close()
-
+            import pdb;pdb.set_trace()
             self.social_mapping_table = first_circle_candidates.copy()
             for each_uid in first_circle_candidates.keys():
                 all_friends = self.social_handler.get_friends(each_uid)
@@ -144,7 +154,7 @@ class PeopleFinder(object):
         for each_uid, each_uname in self.social_mapping_table.iteritems():
             sim = self.calc_profile_sim(email_pf, each_uname)
             result_list.update({each_uid: sim})
-        optimal_match = sorted(result_list.iteritems(), key=lambda d:d[1], reverse=True)[0]
+        optimal_match = sorted(result_list.iteritems(), key=lambda d:d[1], reverse=True)[:1]
         return optimal_match
 
     def calc_profile_sim(self, email_pf, social_pf):
