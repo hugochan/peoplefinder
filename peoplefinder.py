@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 
-import jieba
-import pickle
 import os
 import sys
 sys.path.extend(['mail', 'social/linkedin', 'social/renren'])
 from mailcleaner import MailCleaner
 from visualgraph import VisualGraph
 from renren import RenRen
+import jieba
+import pickle
+from selenium import webdriver # parse dynamic web pages
+
+
 PROJECT_ROOT = os.path.split(os.path.realpath(__file__))[0]
 
 class PeopleFinder(object):
@@ -34,12 +37,15 @@ class PeopleFinder(object):
             top_num = 20
             first_circle_candidates = {}
             self.social_friend_table = {} # friend list
+
+            driver = webdriver.Firefox() # assume you have firefox on your local computer
             for emailaddr, username in mapping_table.iteritems():
-                candidates_table = self.social_handler.search_profiles(emailaddr, top_num)
+                candidates_table = self.social_handler.search_profiles(emailaddr, top_num, driver)
                 if not candidates_table:
                     search_name = username and username or emailaddr.split('@')[0]
-                    candidates_table = self.social_handler.search_profiles(search_name, top_num)
+                    candidates_table = self.social_handler.search_profiles(search_name, top_num, driver)
                 first_circle_candidates.update(candidates_table)
+            driver.close()
 
             self.social_mapping_table = first_circle_candidates.copy()
             for each_uid in first_circle_candidates.keys():
@@ -52,7 +58,6 @@ class PeopleFinder(object):
                     except:
                         self.social_friend_table.update({each_friend: set([each_uid])})
             # save data
-            import pdb;pdb.set_trace()
             self.save_data([self.social_mapping_table, self.social_friend_table], 'social')
         else:
             self.social_mapping_table, self.social_friend_table = self.load_data('social')
@@ -147,7 +152,6 @@ class PeopleFinder(object):
         return sim
 
     def calc_string_sim(self, a, b):
-        import pdb;pdb.set_trace()
         try:
             a_seg_list = [x for x in jieba.cut(a, cut_all=False)]
             b_seg_list = [x for x in jieba.cut(b, cut_all=False)]

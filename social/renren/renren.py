@@ -2,24 +2,16 @@
 
 import gevent.monkey
 gevent.monkey.patch_all()
-
 import gevent
 from gevent.pool import Pool
-
-
 import re
 import random
 import urllib
 import urllib2
 import cookielib
-
 from lxml import etree
-
-
-
 from utils import retry, gtimeout
-
-
+from selenium import webdriver # parse dynamic web pages
 
 class FriendsStore(object):
     __slots__ = ('uid', 'level', 'parent', 'friends')
@@ -37,8 +29,6 @@ class FriendsStore(object):
         return self.friends & friend_obj.friends
 
 
-
-
 class RenRen(object):
     USER_AGENT = [
         'Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.57 Safari/537.17',
@@ -48,18 +38,15 @@ class RenRen(object):
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_8_2) AppleWebKit/536.26.17 (KHTML, like Gecko) Version/6.0.2 Safari/536.26.17',
     ]
 
-
     def __init__(self, email, password):
         self.email = email
         self.password = password
         self.login_times = 0
         self.login()
 
-
     @classmethod
     def random_user_agent(cls):
         return random.choice(cls.USER_AGENT)
-
 
     @property
     def headers(self):
@@ -67,23 +54,23 @@ class RenRen(object):
             ('User-Agent', RenRen.random_user_agent()),
         ]
 
-
     def login(self):
         self.login_times += 1
 
-        url  = 'http://www.renren.com/ajaxLogin/login'
+        url = 'http://www.renren.com/ajaxLogin/login'
         data = urllib.urlencode({
-                'email': self.email,
-                'password': self.password,
-                'origURL': 'http://www.renren.com/home',
-                'domain': 'renren.com',
-            })
+            'email': self.email,
+            'password': self.password,
+            'origURL': 'http://www.renren.com/home',
+            'domain': 'renren.com',
+        })
 
         self.cookie = cookielib.CookieJar()
-        self.opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookie))
+        self.opener = urllib2.build_opener(
+            urllib2.HTTPCookieProcessor(self.cookie))
 
         #self.opener.addheaders = self.headers
-        #不知为何，这里不能带 headers，没有headers反而顺利请求
+        # 不知为何，这里不能带 headers，没有headers反而顺利请求
         self.opener.addheaders = []
 
         urllib2.install_opener(self.opener)
@@ -102,18 +89,12 @@ class RenRen(object):
         else:
             self.uid = own_uid[0]
 
-
     def view_page(self, uid):
         url = 'http://www.renren.com/{0}/profile'.format(uid)
         self.opener.open(url)
 
-
     def get_friends(self, uid=None):
-        #########to do################
-        # uid & uname
-        ##############################
         uid = uid or self.uid
-
         URL = 'http://friend.renren.com/GetFriendList.do?curpage={0}&id=' + str(uid)
         first_page = self.opener.open(URL.format(0))
 
@@ -121,67 +102,60 @@ class RenRen(object):
         tree = etree.parse(first_page, parse)
         friends_amount = int(tree.xpath('//div[@id="toc"]/p[1]/span/text()')[0])
 
-
         friends_pages, _rest = divmod(friends_amount, 20)
         if _rest > 0:
             friends_pages += 1
 
-
-        friends_xpath = '//div[@id="list-results"]//li/p/a/@href'
+        uid_friends_xpath = '//div[@id="list-results"]//li/p/a/@href'
+        uname_friends_xpath = '//div[@id="list-results"]//li//div/dl//dd/a/text()'
         all_friends = {}
 
-
-        first_page_friends = [f.split('=')[1] for f in tree.xpath(friends_xpath)]
-        all_friends.extend(first_page_friends)
-
+        uid_friends = [f.split('=')[1] for f in tree.xpath(uid_friends_xpath)]
+        uname_friends = [f for f in tree.xpath(uname_friends_xpath)]
+        all_friends.update(dict(zip(uid_friends, uname_friends)))
 
         @retry()
         @gtimeout()
         def _get(p):
             html = self.opener.open(URL.format(p))
             tree = etree.parse(html, parse)
-            res = [f.split('=')[1] for f in tree.xpath(friends_xpath)]
-            return res
+            uid_friends = [f.split('=')[1]
+                           for f in tree.xpath(uid_friends_xpath)]
+            uname_friends = [f for f in tree.xpath(uname_friends_xpath)]
+            return dict(zip(uid_friends, uname_friends))
 
-        #this is sync version
+        # this is sync version
         for i in range(1, friends_pages):
-            all_friends.extend(_get(i))
-
+            all_friends.update(_get(i))
 
         # 多次测试发现，对同一个人的好友不能并发请求，
         # 如果并发，这些请求全部会block住，没有响应。
         # 所以是对不同的人起多个并发请求
 
-        ## this is gevent version
+        # this is gevent version
         #pool = Pool(2)
-        #for p in pool.imap_unordered(_get, xrange(1, friends_pages)):
-        #    all_friends.extend(p)
+        # for p in pool.imap_unordered(_get, xrange(1, friends_pages)):
+        #    all_friends.update(p)
         #    gevent.sleep(0)
-
-
         return all_friends
 
-    def search_profiles(self, keyword, topnum):
-        # cannot get enough pages
-        # import pdb;pdb.set_trace()
+    def search_profiles(self, keyword, topnum, driver):
         URL = "http://browse.renren.com/s/all?from=opensearch&q=%s#qt=%s/tindex=2/"%(keyword, keyword)
         page_index = 1
         profile_count = 0
         profile_table = {}
+
         while True:
-            cur_URL = URL + 'curpage=%s'%page_index
+            cur_URL = URL + 'curpage=%s' % page_index
             try:
-                search_page = self.opener.open(cur_URL.format(0))
-                tree = etree.parse(search_page, etree.HTMLParser())
-                uid = tree.xpath('//a/@data-id') # ?????????? same every page
-                uname = 'test'
-                #########to do################
-                # uid & uname
-                ##############################
-                if not uid:
+                # selenium
+                driver.get(cur_URL)
+                html = driver.page_source
+                uid_uname_list = re.findall(r'<strong><a target.*id=(\d+).*>(.*)</a></strong>', html.encode('utf-8'))
+                if not uid_uname_list:
                     return profile_table
-                for each in uid:
-                    profile_table.update({each:uname})
+                for each in uid_uname_list:
+                    profile_table.update({each[0]: each[1]})
                     profile_count += 1
                     if profile_count >= topnum:
                         return profile_table
@@ -190,11 +164,11 @@ class RenRen(object):
                 return profile_table
             page_index += 1
 
+
 class RenRenRelationShip(object):
+
     def __init__(self, email, password):
         self.renren = RenRen(email, password)
-
-
 
     def collect_friends(self, uid=None, level=1):
         slot = []
@@ -214,8 +188,6 @@ class RenRenRelationShip(object):
             fo.friends = friends
             return fo
 
-
-
         fs = FriendsStore(uid, 0)
         slot.append(fs)
 
@@ -232,12 +204,9 @@ class RenRenRelationShip(object):
                     continue
 
                 slot.extend(
-                    [find_fs(u, l+1, fo.uid) for u in fo.friends]
+                    [find_fs(u, l + 1, fo.uid) for u in fo.friends]
                 )
-
 
         print 'collect done'
         slot.pop(0)
         return slot
-
-

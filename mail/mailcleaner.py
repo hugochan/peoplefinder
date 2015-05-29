@@ -58,8 +58,6 @@ class MailCleaner(object):
         Parse email addresses to get username and addresses
         """
         username, emailaddr = email.utils.parseaddr(string)
-        if '1098796184' in emailaddr:
-            import pdb;pdb.set_trace()
         try:
             if chardet.detect(username)['encoding'] == 'ascii':
                 # parse username decoded like '=?gbk?Q?=CF=E0=C6=AC?='
@@ -97,6 +95,9 @@ class MailCleaner(object):
             print self.parseaddr(each)
 
     def clean_emailaddrs(self, stoplist):
+        """
+        Clean email heads to get relationships
+        """
         mapping_table = {} # username-email mapping table
         contact_table = {} # contact list
         for each_mbox in self.mbox:
