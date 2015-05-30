@@ -14,16 +14,17 @@ class MailCleaner(object):
     DATA_ROOT = './data/'
 
     def __init__(self, path):
-        self.mbox = [mailbox.mbox(each) for each in path]
         self.mails_count = 0
+        self.path = path
 
     def get_emailaddrs(self):
         """
         Return all the email addresses involved in from, to or cc field
         might be dirty data
         """
+        mbox = [mailbox.mbox(each) for each in self.path]
         collector = set()
-        for each_mbox in self.mbox:
+        for each_mbox in mbox:
             for each_record in each_mbox:
                 if each_record.has_key('From'):
                     collector.update(each_record['From'].split(','))
@@ -100,7 +101,9 @@ class MailCleaner(object):
         """
         mapping_table = {} # username-email mapping table
         contact_table = {} # contact list
-        for each_mbox in self.mbox:
+        mbox = [mailbox.mbox(each) for each in self.path]
+
+        for each_mbox in mbox:
             for each_record in each_mbox:
                 self.mails_count += 1
                 tmp_contact_set = set()

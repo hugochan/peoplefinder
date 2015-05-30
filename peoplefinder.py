@@ -2,6 +2,7 @@
 
 import os
 import time
+import pp # parallel python
 import sys
 sys.path.extend(['mail', 'social/linkedin', 'social/renren'])
 from mailcleaner import MailCleaner
@@ -9,7 +10,7 @@ from visualgraph import VisualGraph
 from renren import RenRen
 import jieba
 import pickle
-from selenium import webdriver # parse dynamic web pages
+import selenium # parse dynamic web pages
 
 
 PROJECT_ROOT = os.path.split(os.path.realpath(__file__))[0]
@@ -33,40 +34,67 @@ class PeopleFinder(object):
             vg.save_graph('tmp_mail.png')
         return self.email_mapping_table, self.email_contact_table
 
-    def create_social_network(self, mapping_table, local=False, show_and_save=False):
+    def create_social_network(self, mapping_table):
+        top_num = 10
+        first_circle_candidates = {}
+        social_friend_table = {} # friend list
+
+        driver = selenium.webdriver.Firefox() # assume you have firefox on your local computer
+        # login first
+        driver.get('http://renren.com')
+        username = driver.find_element_by_id("email")
+        password = driver.find_element_by_id("password")
+        username.send_keys(self.social_handler.email)
+        password.send_keys(self.social_handler.password)
+        driver.find_element_by_id("login").click()
+        time.sleep(3) # import time delay
+
+        for emailaddr, username in mapping_table:
+            candidates_table = self.social_handler.search_profiles(emailaddr, top_num, driver)
+            if not candidates_table:
+                search_name = username and username or emailaddr.split('@')[0]
+                candidates_table = self.social_handler.search_profiles(search_name, top_num, driver)
+            first_circle_candidates.update(candidates_table)
+        driver.close()
+
+        social_mapping_table = first_circle_candidates.copy()
+        for each_uid in first_circle_candidates.keys():
+            all_friends = self.social_handler.get_friends(each_uid)
+            social_mapping_table.update(all_friends)
+            social_friend_table.update({each_uid: set(all_friends.keys())})
+            for each_friend in all_friends.keys():
+                try:
+                    social_friend_table[each_friend].update([each_uid])
+                except:
+                    social_friend_table.update({each_friend: set([each_uid])})
+        return social_mapping_table, social_friend_table
+
+    def create_social_network_pp(self, mapping_table, local=False, show_and_save=False):
         if not local:
-            top_num = 20
-            first_circle_candidates = {}
-            self.social_friend_table = {} # friend list
+            self.social_mapping_table = {}
+            self.social_friend_table = {}
+            mapping_table = mapping_table.items()
 
-            driver = webdriver.Firefox() # assume you have firefox on your local computer
-            # login first
-            driver.get('http://renren.com')
-            username = driver.find_element_by_id("email")
-            password = driver.find_element_by_id("password")
-            username.send_keys(self.social_handler.email)
-            password.send_keys(self.social_handler.password)
-            driver.find_element_by_id("login").click()
-            time.sleep(3) # import time delay
+            # using parallel computing
+            batch_num = 8
+            task_num = len(mapping_table)
+            batch_size = task_num/batch_num
+            job_server = pp.Server()# require parallel python
 
-            for emailaddr, username in mapping_table.iteritems():
-                candidates_table = self.social_handler.search_profiles(emailaddr, top_num, driver)
-                if not candidates_table:
-                    search_name = username and username or emailaddr.split('@')[0]
-                    candidates_table = self.social_handler.search_profiles(search_name, top_num, driver)
-                first_circle_candidates.update(candidates_table)
-            driver.close()
-            import pdb;pdb.set_trace()
-            self.social_mapping_table = first_circle_candidates.copy()
-            for each_uid in first_circle_candidates.keys():
-                all_friends = self.social_handler.get_friends(each_uid)
-                self.social_mapping_table.update(all_friends)
-                self.social_friend_table.update({each_uid: set(all_friends.keys())})
-                for each_friend in all_friends.keys():
-                    try:
-                        self.social_friend_table[each_friend].update([each_uid])
-                    except:
-                        self.social_friend_table.update({each_friend: set([each_uid])})
+            for index in range(0, batch_num):
+                job = job_server.submit(func=self.create_social_network, \
+                    args=(mapping_table[index*batch_size:(index+1)*batch_size],), \
+                    depfuncs=(), modules=('selenium', 'time'), callback=self.merge_social_network)
+            job_server.wait()
+            print "%s tasks done !"%(batch_num*batch_size)
+
+            if task_num - batch_num*batch_size != 0:
+                job = job_server.submit(func=self.create_social_network, \
+                    args=(mapping_table[batch_num*batch_size:task_num],), \
+                    depfuncs=(), modules=('selenium', 'time'), callback=self.merge_social_network)
+                job_server.wait()
+                print "task:%s done !"%task_num
+
             # save data
             self.save_data([self.social_mapping_table, self.social_friend_table], 'social')
         else:
@@ -75,6 +103,14 @@ class PeopleFinder(object):
         if show_and_save:
             pass
         return self.social_mapping_table, self.social_friend_table
+
+    def merge_social_network(self, result):
+        self.social_mapping_table.update(result[0])
+        for k, v in result[1].iteritems():
+            try:
+                self.social_friend_table[k].update(v)
+            except:
+                self.social_friend_table.update({k:v})
 
     def save_data(self, data, data_type):
         """
@@ -119,7 +155,7 @@ class PeopleFinder(object):
             return False
         return [social_mapping_table, social_friend_table]
 
-    def do_recommend(self, email_uid, top_num=10):
+    def do_recommend(self, email_uid, top_num=5):
         candidates = {}
         for each_social_uid in self.social_mapping_table.keys():
             sim = self.calc_entry_sim_overlap(email_uid, each_social_uid)
@@ -176,4 +212,3 @@ class PeopleFinder(object):
         union_count = float(len(a | b))
         sim = union_count and len(a&b)/union_count or 0
         return sim
-
