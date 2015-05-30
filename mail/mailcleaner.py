@@ -10,7 +10,7 @@ class MailCleaner(object):
     EMAIL_PATTERN1 = r'<(.*)>'
     EMAIL_PATTERN2 = r'^[\s]*([^\s]*)[\s]*'
     EMAIL_PATTERN3 = r'^[\s]*[^()]*[\s]*'
-    DEFAULT_STOP_PATTERN = (r'(?:-|grad|app|notif(?:y|ication)|noreply|service|sail|business|airchina|help|gift|support|info|party|city|employ|pay|regist|admi(?:s|n)|(?:no|every)body)|(?:github|youtube|google|baidu|amazon|eefocus|zhaoshangju|elecfans|360buy|altera|7days(?:inn|room|)|verifylist|iar|wps|pingan|zhenpin|dangdang|xfcom)',)
+    DEFAULT_STOP_PATTERN = (r'(?:-|grad|app|health|study|newyear|passport|notif(?:y|ication)|noreply|service|sail|business|airchina|help|guest|careers|gift|support|info|party|city|employ|pay|regist|admi(?:s|n)|(?:no|every)body)|(?:github|youtube|google|baidu|amazon|eefocus|zhaoshangju|elecfans|360buy|altera|7days(?:inn|room|)|verifylist|iar|wps|kingsoft|pingan|zhenpin|dangdang|xfcom)',)
     DATA_ROOT = './data/'
 
     def __init__(self, path):
