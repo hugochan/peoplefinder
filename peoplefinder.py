@@ -11,8 +11,8 @@ from renren import RenRen
 import jieba
 import pickle
 import selenium # parse dynamic web pages
-import numpy as np
-from munkres import Munkres, print_matrix
+import numpy
+import munkres
 
 
 PROJECT_ROOT = os.path.split(os.path.realpath(__file__))[0]
@@ -248,10 +248,10 @@ class PeopleFinder(object):
         return candidates[:top_num]
 
     def calc_graph_sim(self, threshold=0.00005):
-        self.graph_sim_matrix = np.ones((self.email_num, self.social_num)) # initial state
+        self.graph_sim_matrix = numpy.ones((self.email_num, self.social_num)) # initial state
         changes = 1.0
         while changes > threshold:
-            changes = self.itcalc_graph_sim_matrix()
+            changes = self.itcalc_graph_sim_matrix_pp()
             # for test threshold
             recommend_list = {}
             for each_email_index in range(self.email_num):
@@ -262,9 +262,39 @@ class PeopleFinder(object):
             self.save_results(recommend_list, 'graph_%s'%changes)
         return self.graph_sim_matrix
 
-    def itcalc_graph_sim_matrix(self):
-        tmp_sim_matrix = np.zeros((self.email_num, self.social_num))
-        for each_email_uid, each_email_contacts in self.email_contact_table.iteritems():
+    def merge_sim_matrix(self, result):
+        self.tmp_sim_matrix += result
+
+    def itcalc_graph_sim_matrix_pp(self):
+        self.tmp_sim_matrix = numpy.zeros((self.email_num, self.social_num))
+        email_mapping_table = self.email_mapping_table.items()
+        # using parallel computing
+        batch_num = 8
+        task_num = len(email_mapping_table)
+        batch_size = task_num/batch_num
+        job_server = pp.Server()# require parallel python
+
+        for index in range(0, batch_num):
+            job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
+                args=(email_mapping_table[index*batch_size:(index+1)*batch_size],),\
+                depfuncs=(), modules=('munkres', 'numpy'), callback=self.merge_sim_matrix)
+        job_server.wait()
+        print "%s tasks done !"%(batch_num*batch_size)
+
+        if task_num - batch_num*batch_size != 0:
+            job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
+                args=(email_mapping_table[batch_num*batch_size:task_num],),\
+                depfuncs=(), modules=('munkres', 'numpy'), callback=self.merge_sim_matrix)
+            job_server.wait()
+            print "%s tasks done !"%task_num
+
+        changes = numpy.mean(abs(self.graph_sim_matrix - self.tmp_sim_matrix))
+        self.graph_sim_matrix = self.tmp_sim_matrix.copy()
+        return changes
+
+    def itcalc_graph_sim_matrix(self, email_contact_table):
+        tmp_sim_matrix = numpy.zeros((self.email_num, self.social_num))
+        for each_email_uid, each_email_contacts in email_contact_table:
             if not each_email_contacts:
                 continue
             email_index = self.email_uid2index[each_email_uid]
@@ -274,9 +304,7 @@ class PeopleFinder(object):
                     social_index = self.social_uid2index[each_social_uid]
                     tmp_sim_matrix[email_index, social_index] = sim
             print '%s done!'%each_email_uid
-        changes = np.mean(abs(self.graph_sim_matrix - tmp_sim_matrix))
-        self.graph_sim_matrix = tmp_sim_matrix.copy()
-        return changes
+        return tmp_sim_matrix
 
     def fuzzy_jaccard_sim(self, email_uid, social_uid):
         email_index_list = [self.email_uid2index[each_uid] for each_uid in self.email_contact_table[email_uid] if each_uid != email_uid]
@@ -288,7 +316,7 @@ class PeopleFinder(object):
 
         if row > col:
             neighboring_matrix = neighboring_matrix.transpose()
-        mk = Munkres()
+        mk = munkres.Munkres()
         try:
             indexes = mk.compute(-neighboring_matrix)
         except Exception, e:
@@ -351,4 +379,3 @@ class PeopleFinder(object):
         union_count = float(len(a | b))
         sim = union_count and len(a&b)/union_count or 0
         return sim
-
