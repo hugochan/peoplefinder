@@ -11,6 +11,8 @@ from renren import RenRen
 import jieba
 import pickle
 import selenium # parse dynamic web pages
+import numpy as np
+from munkres import Munkres, print_matrix
 
 
 PROJECT_ROOT = os.path.split(os.path.realpath(__file__))[0]
@@ -175,40 +177,52 @@ class PeopleFinder(object):
         self.recommend_list.update(result)
 
     def run_pp(self, method, top_num=10):
-        self.recommend_list = {}
         email_mapping_table = self.email_mapping_table.items()
-        # using parallel computing
-        batch_num = 8
-        task_num = len(email_mapping_table)
-        batch_size = task_num/batch_num
-        job_server = pp.Server()# require parallel python
+        if method == 'graph':
+            self.recommend_list = self.run(method, email_mapping_table, top_num)
+        else:
+            self.recommend_list = {}
+            # using parallel computing
+            batch_num = 8
+            task_num = len(email_mapping_table)
+            batch_size = task_num/batch_num
+            job_server = pp.Server()# require parallel python
 
-        for index in range(0, batch_num):
-            job = job_server.submit(func=self.run, \
-                args=(method, email_mapping_table[index*batch_size:(index+1)*batch_size], top_num),\
-                depfuncs=(), modules=('jieba',), callback=self.merge_results)
-        job_server.wait()
-        print "%s tasks done !"%(batch_num*batch_size)
-
-        if task_num - batch_num*batch_size != 0:
-            job = job_server.submit(func=self.run, \
-                args=(method, email_mapping_table[batch_num*batch_size:task_num], top_num),\
-                depfuncs=(), modules=('jieba',), callback=self.merge_results)
+            for index in range(0, batch_num):
+                job = job_server.submit(func=self.run, \
+                    args=(method, email_mapping_table[index*batch_size:(index+1)*batch_size], top_num),\
+                    depfuncs=(), modules=('jieba',), callback=self.merge_results)
             job_server.wait()
-            print "%s tasks done !"%task_num
+            print "%s tasks done !"%(batch_num*batch_size)
+
+            if task_num - batch_num*batch_size != 0:
+                job = job_server.submit(func=self.run, \
+                    args=(method, email_mapping_table[batch_num*batch_size:task_num], top_num),\
+                    depfuncs=(), modules=('jieba',), callback=self.merge_results)
+                job_server.wait()
+                print "%s tasks done !"%task_num
 
         self.save_results(self.recommend_list, method)
 
     def run(self, method, email_mapping_table, top_num=10):
-        recommend_list = {}
-        for each_email_uid, each_email_name in email_mapping_table:
-            candidates = self.do_recommend(each_email_uid, method, top_num)
-            recommend_list[each_email_uid] = candidates
-            print '%s done!'%each_email_uid
-        # self.save_results(recommend_list, method)
+        if method == 'graph':
+            self.email_num = len(self.email_mapping_table)
+            self.social_num = len(self.social_mapping_table)
+            self.email_index2uid = self.email_mapping_table.keys()
+            self.social_index2uid = self.social_mapping_table.keys()
+            self.email_uid2index = dict(zip(self.email_index2uid, range(self.email_num)))
+            self.social_uid2index = dict(zip(self.social_index2uid, range(self.social_num)))
+            recommend_list = self.do_recommend(method, top_num)
+        else:
+            recommend_list = {}
+            for each_email_uid, each_email_name in email_mapping_table:
+                candidates = self.do_recommend(method, top_num, each_email_uid)
+                recommend_list[each_email_uid] = candidates
+                print '%s done!'%each_email_uid
+            # self.save_results(recommend_list, method)
         return recommend_list
 
-    def do_recommend(self, email_uid, method, top_num):
+    def do_recommend(self, method, top_num, email_uid=''):
         candidates = {}
         if method == 'profile':
             email_pf = self.email_mapping_table[email_uid] and self.email_mapping_table[email_uid] or email_uid.split('@')[0]
@@ -216,7 +230,14 @@ class PeopleFinder(object):
                 sim = self.calc_profile_sim(email_pf, each_social_pf)
                 candidates.update({each_social_uid: sim})
         elif method == 'graph':
-            pass
+            self.calc_graph_sim(threshold=0.00005)
+            recommend_list = {}
+            for each_email_index in range(self.email_num):
+                email_uid = self.email_index2uid[each_email_index]
+                candidates = zip(self.social_index2uid, self.graph_sim_matrix[each_email_index])
+                candidates = sorted(candidates, key=lambda d:d[1], reverse=True)
+                recommend_list[email_uid] = candidates[:top_num]
+            return recommend_list
         elif method == 'overlap':
             for each_social_uid in self.social_mapping_table.keys():
                 sim = self.calc_entry_sim_overlap(email_uid, each_social_uid)
@@ -225,6 +246,59 @@ class PeopleFinder(object):
             pass
         candidates = sorted(candidates.iteritems(), key=lambda d:d[1], reverse=True)
         return candidates[:top_num]
+
+    def calc_graph_sim(self, threshold=0.00005):
+        self.graph_sim_matrix = np.ones((self.email_num, self.social_num)) # initial state
+        changes = 1.0
+        while changes > threshold:
+            changes = self.itcalc_graph_sim_matrix()
+            # for test threshold
+            recommend_list = {}
+            for each_email_index in range(self.email_num):
+                email_uid = self.email_index2uid[each_email_index]
+                candidates = zip(self.social_index2uid, self.graph_sim_matrix[each_email_index])
+                candidates = sorted(candidates, key=lambda d:d[1], reverse=True)
+                recommend_list[email_uid] = candidates[:10]
+            self.save_results(recommend_list, 'graph_%s'%changes)
+        return self.graph_sim_matrix
+
+    def itcalc_graph_sim_matrix(self):
+        tmp_sim_matrix = np.zeros((self.email_num, self.social_num))
+        for each_email_uid, each_email_contacts in self.email_contact_table.iteritems():
+            if not each_email_contacts:
+                continue
+            email_index = self.email_uid2index[each_email_uid]
+            for each_social_uid, each_social_contacts in self.social_friend_table.iteritems():
+                if each_social_contacts:
+                    sim = self.fuzzy_jaccard_sim(each_email_uid, each_social_uid)
+                    social_index = self.social_uid2index[each_social_uid]
+                    tmp_sim_matrix[email_index, social_index] = sim
+            print '%s done!'%each_email_uid
+        changes = np.mean(abs(self.graph_sim_matrix - tmp_sim_matrix))
+        self.graph_sim_matrix = tmp_sim_matrix.copy()
+        return changes
+
+    def fuzzy_jaccard_sim(self, email_uid, social_uid):
+        email_index_list = [self.email_uid2index[each_uid] for each_uid in self.email_contact_table[email_uid] if each_uid != email_uid]
+        social_index_list = [self.social_uid2index[each_uid] for each_uid in self.social_friend_table[social_uid]]
+        neighboring_matrix = self.graph_sim_matrix[email_index_list,:][:,social_index_list]
+
+        # transpose the matrix if row number > col number
+        row, col = neighboring_matrix.shape
+
+        if row > col:
+            neighboring_matrix = neighboring_matrix.transpose()
+        mk = Munkres()
+        try:
+            indexes = mk.compute(-neighboring_matrix)
+        except Exception, e:
+            print e
+            import pdb;pdb.set_trace()
+        fuzzy_intersection = 0.0
+        for row, col in indexes:
+            fuzzy_intersection += neighboring_matrix[row, col]
+        fuzzy_jaccard = fuzzy_intersection/(self.email_num+self.social_num-fuzzy_intersection)
+        return fuzzy_jaccard
 
     def calc_entry_sim_overlap(self, email_uid, social_uid):
         RATIO = 0.5
@@ -239,9 +313,9 @@ class PeopleFinder(object):
             if optimal_match[0] in self.social_friend_table[social_uid]:
                 overlap_score += optimal_match[1]
 
-        # method 1
+        # Method 1
         sim_overlap_a = total_score and overlap_score/total_score or 0.0
-        # method 2
+        # Method 2
         count = len(self.social_friend_table[social_uid])
         sim_overlap_b = count and overlap_score/count or 0.0
         sim_overlap = sim_overlap_a*RATIO + sim_overlap_b*(1-RATIO)

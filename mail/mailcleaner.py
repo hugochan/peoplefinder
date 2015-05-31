@@ -135,4 +135,5 @@ class MailCleaner(object):
                         contact_table[each_contact].update(tmp_contact_set)
                     except:
                         contact_table.update({each_contact:tmp_contact_set})
+                    contact_table[each_contact].remove(each_contact)
         return [mapping_table, contact_table]
