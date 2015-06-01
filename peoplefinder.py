@@ -12,6 +12,7 @@ import jieba
 import pickle
 import selenium # parse dynamic web pages
 import numpy
+import scipy
 import munkres
 
 
@@ -230,7 +231,7 @@ class PeopleFinder(object):
                 sim = self.calc_profile_sim(email_pf, each_social_pf)
                 candidates.update({each_social_uid: sim})
         elif method == 'graph':
-            self.calc_graph_sim(threshold=0.00005)
+            self.calc_graph_sim()
             recommend_list = {}
             for each_email_index in range(self.email_num):
                 email_uid = self.email_index2uid[each_email_index]
@@ -247,64 +248,88 @@ class PeopleFinder(object):
         candidates = sorted(candidates.iteritems(), key=lambda d:d[1], reverse=True)
         return candidates[:top_num]
 
-    def calc_graph_sim(self, threshold=0.00005):
+    def calc_graph_sim(self, threshold_list = [0.1, 0.01, 0.001, 0.0001, 0.00001]):
         self.graph_sim_matrix = numpy.ones((self.email_num, self.social_num)) # initial state
+        self.profile_sim_matrix = -numpy.ones((self.email_num, self.social_num)) # initial state
+
         changes = 1.0
-        while changes > threshold:
-            changes = self.itcalc_graph_sim_matrix_pp()
-            # for test threshold
+        for each_threshold in threshold_list:
+            while True:
+                changes = self.itcalc_graph_sim_matrix()
+                # for test threshold
+                try:
+                    numpy.save('graph_sim_mat_c%s.npy'%changes, self.graph_sim_matrix)
+                except Exception, e:
+                    print e
+                    pass
+                if changes <= each_threshold:
+                    break
+
+            print 'threshold: %s costs %ss'%(each_threshold, (time.time()-t0))
             recommend_list = {}
             for each_email_index in range(self.email_num):
                 email_uid = self.email_index2uid[each_email_index]
                 candidates = zip(self.social_index2uid, self.graph_sim_matrix[each_email_index])
                 candidates = sorted(candidates, key=lambda d:d[1], reverse=True)
                 recommend_list[email_uid] = candidates[:10]
-            self.save_results(recommend_list, 'graph_%s'%changes)
+            self.save_results(recommend_list, 'graph_%s'%each_threshold)
         return self.graph_sim_matrix
 
-    def merge_sim_matrix(self, result):
-        self.tmp_sim_matrix += result
+    # def merge_sim_matrix(self, result):
+        # self.tmp_sim_matrix[result[1][0]:result[1][1]] = result[0][result[1][0]:result[1][1]]
 
-    def itcalc_graph_sim_matrix_pp(self):
-        self.tmp_sim_matrix = numpy.zeros((self.email_num, self.social_num))
-        email_mapping_table = self.email_mapping_table.items()
-        # using parallel computing
-        batch_num = 8
-        task_num = len(email_mapping_table)
-        batch_size = task_num/batch_num
-        job_server = pp.Server()# require parallel python
+    # def itcalc_graph_sim_matrix_pp(self, job_server):
+    #     # self.tmp_sim_matrix = numpy.zeros((self.email_num, self.social_num))
+    #     self.tmp_sim_matrix = scipy.sparse.lil_matrix((self.email_num, self.social_num))
 
-        for index in range(0, batch_num):
-            job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
-                args=(email_mapping_table[index*batch_size:(index+1)*batch_size],),\
-                depfuncs=(), modules=('munkres', 'numpy'), callback=self.merge_sim_matrix)
-        job_server.wait()
-        print "%s tasks done !"%(batch_num*batch_size)
+    #     # using parallel computing
+    #     batch_num = 8
+    #     task_num = len(self.email_mapping_table)
+    #     batch_size = task_num/batch_num
 
-        if task_num - batch_num*batch_size != 0:
-            job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
-                args=(email_mapping_table[batch_num*batch_size:task_num],),\
-                depfuncs=(), modules=('munkres', 'numpy'), callback=self.merge_sim_matrix)
-            job_server.wait()
-            print "%s tasks done !"%task_num
+    #     for index in range(0, batch_num):
+    #         job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
+    #             args=([index*batch_size, (index+1)*batch_size],),\
+    #             depfuncs=(), modules=('munkres', 'numpy', 'jieba', 'scipy'), callback=self.merge_sim_matrix)
+    #     job_server.wait()
+    #     print "%s tasks done !"%(batch_num*batch_size)
 
-        changes = numpy.mean(abs(self.graph_sim_matrix - self.tmp_sim_matrix))
-        self.graph_sim_matrix = self.tmp_sim_matrix.copy()
-        return changes
+    #     if task_num - batch_num*batch_size != 0:
+    #         job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
+    #             args=([batch_num*batch_size, task_num],),\
+    #             depfuncs=(), modules=('munkres', 'numpy', 'jieba', 'scipy'), callback=self.merge_sim_matrix)
+    #         job_server.wait()
+    #         print "%s tasks done !"%task_num
 
-    def itcalc_graph_sim_matrix(self, email_contact_table):
-        tmp_sim_matrix = numpy.zeros((self.email_num, self.social_num))
-        for each_email_uid, each_email_contacts in email_contact_table:
-            if not each_email_contacts:
+    #     changes = numpy.mean(abs(self.graph_sim_matrix - self.tmp_sim_matrix))
+    #     self.graph_sim_matrix = self.tmp_sim_matrix.toarray()
+    #     return changes
+
+    def itcalc_graph_sim_matrix(self, threshold=0.1):
+        tmp_sim_matrix = scipy.sparse.lil_matrix((self.email_num, self.social_num))
+        for each_email_uid, each_email_uname in self.email_mapping_table.iteritems():
+            if not self.email_contact_table[each_email_uid]:
                 continue
             email_index = self.email_uid2index[each_email_uid]
-            for each_social_uid, each_social_contacts in self.social_friend_table.iteritems():
-                if each_social_contacts:
-                    sim = self.fuzzy_jaccard_sim(each_email_uid, each_social_uid)
+            for each_social_uid, each_social_friends in self.social_friend_table.iteritems():
+                if each_social_friends:
                     social_index = self.social_uid2index[each_social_uid]
+                    if self.profile_sim_matrix[email_index, social_index] >= threshold:
+                        pass
+                    elif self.profile_sim_matrix[email_index, social_index] == -1:
+                        email_pf = each_email_uname and each_email_uname or each_email_uid.split('@')[0]
+                        profile_sim = self.calc_profile_sim(email_pf, self.social_mapping_table[each_social_uid])
+                        self.profile_sim_matrix[email_index, social_index] = profile_sim
+                        if profile_sim < threshold:
+                            continue
+                    else:
+                        continue
+                    sim = self.fuzzy_jaccard_sim(each_email_uid, each_social_uid)
                     tmp_sim_matrix[email_index, social_index] = sim
             print '%s done!'%each_email_uid
-        return tmp_sim_matrix
+        changes = numpy.mean(abs(self.graph_sim_matrix - tmp_sim_matrix))
+        self.graph_sim_matrix = tmp_sim_matrix.toarray()
+        return changes
 
     def fuzzy_jaccard_sim(self, email_uid, social_uid):
         email_index_list = [self.email_uid2index[each_uid] for each_uid in self.email_contact_table[email_uid] if each_uid != email_uid]
@@ -321,7 +346,8 @@ class PeopleFinder(object):
             indexes = mk.compute(-neighboring_matrix)
         except Exception, e:
             print e
-            import pdb;pdb.set_trace()
+            # import pdb;pdb.set_trace()
+            return 0.0
         fuzzy_intersection = 0.0
         for row, col in indexes:
             fuzzy_intersection += neighboring_matrix[row, col]
@@ -379,3 +405,4 @@ class PeopleFinder(object):
         union_count = float(len(a | b))
         sim = union_count and len(a&b)/union_count or 0
         return sim
+
