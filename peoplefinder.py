@@ -3,11 +3,6 @@
 import os
 import time
 import pp # parallel python
-import sys
-sys.path.extend(['mail', 'social/linkedin', 'social/renren'])
-from mailcleaner import MailCleaner
-from visualgraph import VisualGraph
-from renren import RenRen
 import jieba
 import pickle
 import selenium # parse dynamic web pages
@@ -249,12 +244,16 @@ class PeopleFinder(object):
         return candidates[:top_num]
 
     def calc_graph_sim(self, threshold_list = [0.1, 0.01, 0.001, 0.0001, 0.00001]):
-        self.graph_sim_matrix = numpy.ones((self.email_num, self.social_num)) # initial state
+        # self.graph_sim_matrix = numpy.ones((self.email_num, self.social_num)) # initial state
+        # load
+        self.graph_sim_matrix = numpy.load('graph_sim_mat_c2.14877767411e-25.npy')
         self.profile_sim_matrix = -numpy.ones((self.email_num, self.social_num)) # initial state
 
         changes = 1.0
         for each_threshold in threshold_list:
             while True:
+                if changes <= each_threshold:
+                    break
                 changes = self.itcalc_graph_sim_matrix()
                 # for test threshold
                 try:
@@ -262,8 +261,7 @@ class PeopleFinder(object):
                 except Exception, e:
                     print e
                     pass
-                if changes <= each_threshold:
-                    break
+                print 'changes: %s costs %ss'%(changes, (time.time()-t0))
 
             print 'threshold: %s costs %ss'%(each_threshold, (time.time()-t0))
             recommend_list = {}
@@ -275,37 +273,8 @@ class PeopleFinder(object):
             self.save_results(recommend_list, 'graph_%s'%each_threshold)
         return self.graph_sim_matrix
 
-    # def merge_sim_matrix(self, result):
-        # self.tmp_sim_matrix[result[1][0]:result[1][1]] = result[0][result[1][0]:result[1][1]]
-
-    # def itcalc_graph_sim_matrix_pp(self, job_server):
-    #     # self.tmp_sim_matrix = numpy.zeros((self.email_num, self.social_num))
-    #     self.tmp_sim_matrix = scipy.sparse.lil_matrix((self.email_num, self.social_num))
-
-    #     # using parallel computing
-    #     batch_num = 8
-    #     task_num = len(self.email_mapping_table)
-    #     batch_size = task_num/batch_num
-
-    #     for index in range(0, batch_num):
-    #         job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
-    #             args=([index*batch_size, (index+1)*batch_size],),\
-    #             depfuncs=(), modules=('munkres', 'numpy', 'jieba', 'scipy'), callback=self.merge_sim_matrix)
-    #     job_server.wait()
-    #     print "%s tasks done !"%(batch_num*batch_size)
-
-    #     if task_num - batch_num*batch_size != 0:
-    #         job = job_server.submit(func=self.itcalc_graph_sim_matrix, \
-    #             args=([batch_num*batch_size, task_num],),\
-    #             depfuncs=(), modules=('munkres', 'numpy', 'jieba', 'scipy'), callback=self.merge_sim_matrix)
-    #         job_server.wait()
-    #         print "%s tasks done !"%task_num
-
-    #     changes = numpy.mean(abs(self.graph_sim_matrix - self.tmp_sim_matrix))
-    #     self.graph_sim_matrix = self.tmp_sim_matrix.toarray()
-    #     return changes
-
     def itcalc_graph_sim_matrix(self, threshold=0.1):
+        valid_count = 0
         tmp_sim_matrix = scipy.sparse.lil_matrix((self.email_num, self.social_num))
         for each_email_uid, each_email_uname in self.email_mapping_table.iteritems():
             if not self.email_contact_table[each_email_uid]:
@@ -326,9 +295,11 @@ class PeopleFinder(object):
                         continue
                     sim = self.fuzzy_jaccard_sim(each_email_uid, each_social_uid)
                     tmp_sim_matrix[email_index, social_index] = sim
+                    valid_count += 1
             print '%s done!'%each_email_uid
-        changes = numpy.mean(abs(self.graph_sim_matrix - tmp_sim_matrix))
+        changes = valid_count and numpy.sum(abs(self.graph_sim_matrix - tmp_sim_matrix))/valid_count or 0.0
         self.graph_sim_matrix = tmp_sim_matrix.toarray()
+        print 'valid_count:%s'%valid_count
         return changes
 
     def fuzzy_jaccard_sim(self, email_uid, social_uid):
@@ -405,4 +376,3 @@ class PeopleFinder(object):
         union_count = float(len(a | b))
         sim = union_count and len(a&b)/union_count or 0
         return sim
-
