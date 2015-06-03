@@ -11,6 +11,13 @@ import scipy
 import munkres
 
 
+
+import sys
+sys.path.extend(['mail', 'social/linkedin', 'social/renren'])
+from mailcleaner import MailCleaner
+from visualgraph import VisualGraph
+from renren import RenRen
+
 PROJECT_ROOT = os.path.split(os.path.realpath(__file__))[0]
 
 class PeopleFinder(object):
@@ -244,9 +251,7 @@ class PeopleFinder(object):
         return candidates[:top_num]
 
     def calc_graph_sim(self, threshold_list = [0.1, 0.01, 0.001, 0.0001, 0.00001]):
-        # self.graph_sim_matrix = numpy.ones((self.email_num, self.social_num)) # initial state
-        # load
-        self.graph_sim_matrix = numpy.load('graph_sim_mat_c2.14877767411e-25.npy')
+        self.graph_sim_matrix = numpy.ones((self.email_num, self.social_num)) # initial state
         self.profile_sim_matrix = -numpy.ones((self.email_num, self.social_num)) # initial state
 
         changes = 1.0
@@ -376,3 +381,35 @@ class PeopleFinder(object):
         union_count = float(len(a | b))
         sim = union_count and len(a&b)/union_count or 0
         return sim
+
+    def calc_profile_sim_matrix(self):
+        real_mapping = {}
+        try:
+            with open('data/results/real_mapping.dat', 'r') as f:
+                for line in f:
+                    content = line.split(',')
+                    if len(content) == 3:
+                        real_mapping[content[0]] = content[2].replace('\n', '')
+                f.close()
+        except Exception, e:
+            print e
+            return False
+        email_index2uid = self.email_mapping_table.keys()
+        social_index2uid = self.social_mapping_table.keys()
+        email_uid2index = dict(zip(email_index2uid, range(len(self.email_mapping_table))))
+        social_uid2index = dict(zip(social_index2uid, range(len(self.social_mapping_table))))
+
+        profile_sim_matrix = numpy.zeros((len(real_mapping), len(self.social_mapping_table)))
+        index = 0
+        for each_email_uid in real_mapping.keys():
+            email_pf = self.email_mapping_table[each_email_uid] and self.email_mapping_table[each_email_uid] or each_email_uid.split('@')[0]
+            for each_social_uid, each_social_pf in self.social_mapping_table.iteritems():
+                sim = self.calc_profile_sim(email_pf, each_social_pf)
+                if sim >= 0.1:
+                    profile_sim_matrix[index, social_uid2index[each_social_uid]] = sim
+            index += 1
+            print '%s done!'%each_email_uid
+        try:
+            numpy.save('profile_sim_matrix_part.npy', profile_sim_matrix)
+        except Exception, e:
+            print e
