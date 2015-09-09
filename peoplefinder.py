@@ -413,3 +413,31 @@ class PeopleFinder(object):
             numpy.save('profile_sim_matrix_part.npy', profile_sim_matrix)
         except Exception, e:
             print e
+
+
+t0 = 0
+if __name__ == '__main__':
+    mbox_path = ['data/email/qq_mail.mbox']
+    email = "XXXXXXXXX"
+    passwd = 'XXXXXXXXX'
+    mc = MailCleaner(mbox_path)
+    renren = RenRen(email, passwd)
+    # renren = None
+    pf = PeopleFinder(mc, renren)
+    ef = pf.create_email_network(local=True)
+    V, E = pf.create_social_network_pp(ef[0], local=True)
+
+    # t0 = time.time()
+    # pf.run_pp('profile', 10)
+    # pf.calc_profile_sim_matrix()
+    # print 'costs %ss'%(time.time()-t0)
+
+    # vg = VisualGraph(name='social network')
+    # vg.import_data(E)
+    # vg.save_graph('social network')
+    # vg.save_histogram('social histogram')
+
+    # optimal_match = pf.get_optimal_socials(['email', 'name'])
+    # print optimal_match
+
+

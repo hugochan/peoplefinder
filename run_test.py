@@ -135,6 +135,16 @@ class PeopleFinderTest(object):
         # for k, v in self.real_mapping.items():
         #     print k, v
 
+    def overlapped_edge(self):
+        valid_count = 0
+        for email_uid in self.real_mapping.keys():
+            for email_contact in self.pf.email_contact_table[email_uid]:
+                if email_contact in self.real_mapping.keys():
+                    valid_count += 1
+                    print email_uid, email_contact
+        print valid_count
+        return valid_count
+
     def visual_results(self):
         # # GM algorithm
         # iteration_time = [(1, 9613.35643), (2, 12113.567425), (3, 14974.5322859), (4, 19351.0366409), (5, 23430.754087), (6, 27597.5242889), (7, 31598.7238252)]
@@ -150,7 +160,7 @@ class PeopleFinderTest(object):
         # plt.ylabel("run time (s)")
         # # plt.ylim(ylim)
         # # plt.legend(loc='upper left', fontsize=12)
-        # plt.savefig("GM_it_time.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("GM_it_time.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -173,7 +183,7 @@ class PeopleFinderTest(object):
         # plt.semilogy(iteration, changes, lw=2)
         # # plt.ylim(ylim)
         # # plt.legend(loc='upper left', fontsize=12)
-        # plt.savefig("GM_it_changes.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("GM_it_changes.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -184,18 +194,18 @@ class PeopleFinderTest(object):
         # # k = 1
         # iteration_accuracy = [0.3169642857142857, 0.16964285714285715, 0.17410714285714285, 0.17410714285714285, 0.17410714285714285, 0.16964285714285715, 0.16964285714285715]
         # plt.plot(range(1, 8), iteration_accuracy, "d--", color="g", linewidth=1.5, label="k=1")
-        # plt.legend(loc='upper left', fontsize=12)
+        # plt.legend(loc='center right', fontsize=12)
 
         # # k = 3
         # iteration_accuracy = [0.36160714285714285, 0.18303571428571427, 0.18303571428571427, 0.17857142857142858, 0.17857142857142858, 0.17857142857142858, 0.17857142857142858]
         # plt.plot(range(1, 8), iteration_accuracy, "s--", color="r", linewidth=1.5, label="k=3")
-        # plt.legend(loc='upper left', fontsize=12)
+        # plt.legend(loc='center right', fontsize=12)
 
 
         # # k = 5
         # iteration_accuracy = [0.38839285714285715, 0.1875, 0.1875, 0.17857142857142858, 0.18303571428571427, 0.17857142857142858, 0.17857142857142858]
         # plt.plot(range(1, 8), iteration_accuracy, "v--", color="b", linewidth=1.5, label="k=5")
-        # plt.legend(loc='upper left', fontsize=12)
+        # plt.legend(loc='center right', fontsize=12)
 
 
         # # # k = 7
@@ -207,11 +217,11 @@ class PeopleFinderTest(object):
         # # k = 10
         # iteration_accuracy = [0.41517857142857145, 0.19642857142857142, 0.19642857142857142, 0.19196428571428573, 0.19196428571428573, 0.19196428571428573, 0.19196428571428573]
         # plt.plot(range(1, 8), iteration_accuracy, "k--", color="y", linewidth=1.5, label="k=10")
-        # plt.legend(loc='upper left', fontsize=12)
+        # plt.legend(loc='center right', fontsize=12)
 
         # plt.xlabel("iteration")
         # plt.ylabel("accuracy")
-        # plt.savefig("GM_it_accuracy.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("GM_it_accuracy.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -242,7 +252,7 @@ class PeopleFinderTest(object):
 
         # plt.xlabel("iteration")
         # plt.ylabel("ranking score")
-        # plt.savefig("GM_it_ranking.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("GM_it_ranking.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -253,26 +263,26 @@ class PeopleFinderTest(object):
         # # k = 1
         # tmp = sorted(k_ratio_accuracy[1].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "d--", color="g", linewidth=1.5, label="k=1")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='lower left', fontsize=12)
 
         # # k = 3
         # tmp = sorted(k_ratio_accuracy[3].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "s--", color="b", linewidth=1.5, label="k=3")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='lower left', fontsize=12)
 
         # # k = 5
         # tmp = sorted(k_ratio_accuracy[5].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "v--", color="r", linewidth=1.5, label="k=5")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='lower left', fontsize=12)
 
         # # k = 10
         # tmp = sorted(k_ratio_accuracy[10].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "p--", color="y", linewidth=1.5, label="k=10")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='lower left', fontsize=12)
 
         # plt.xlabel("$\phi$")
         # plt.ylabel("accuracy")
-        # plt.savefig("PPGM_k_ratio_accuracy.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("PPGM_k_ratio_accuracy.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -283,26 +293,26 @@ class PeopleFinderTest(object):
         # # k = 1
         # tmp = sorted(k_ratio_ranking[1].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "d--", color="g", linewidth=1.5, label="k=1")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='upper left', fontsize=12)
 
         # # k = 3
         # tmp = sorted(k_ratio_ranking[3].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "s--", color="b", linewidth=1.5, label="k=3")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='upper left', fontsize=12)
 
         # # k = 5
         # tmp = sorted(k_ratio_ranking[5].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "v--", color="r", linewidth=1.5, label="k=5")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='upper left', fontsize=12)
 
         # # k = 10
         # tmp = sorted(k_ratio_ranking[10].iteritems(), key=lambda d:d[0])
         # plt.plot(zip(*tmp)[0], zip(*tmp)[1], "p--", color="y", linewidth=1.5, label="k=10")
-        # plt.legend(loc='lower right', fontsize=12)
+        # plt.legend(loc='upper left', fontsize=12)
 
         # plt.xlabel("$\phi$")
         # plt.ylabel("ranking score")
-        # plt.savefig("PPGM_k_ratio_ranking.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("PPGM_k_ratio_ranking.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -339,7 +349,7 @@ class PeopleFinderTest(object):
         # plt.xlabel("k")
         # plt.ylabel("accuracy")
         # plt.legend(loc='center right', fontsize=12)
-        # plt.savefig("k_accuracy.eps", figsize=(20,20), dpi=1200)
+        # plt.savefig("k_accuracy.png", figsize=(20,20), dpi=1200)
         # plt.show()
 
 
@@ -377,6 +387,31 @@ class PeopleFinderTest(object):
         plt.ylabel("ranking score")
         plt.legend(loc='center right', fontsize=12)
 
-        plt.savefig("k_ranking.eps", figsize=(20,20), dpi=1200)
+        plt.savefig("k_ranking.png", figsize=(20,20), dpi=1200)
         plt.show()
+
+t0 = 0
+if __name__ == '__main__':
+    mbox_path = ['data/email/qq_mail.mbox']
+    email = "XXXXXXXXXXXXXx"
+    passwd = 'XXXXXXXXXXXXXXXX'
+    mc = MailCleaner(mbox_path)
+    # renren = RenRen(email, passwd)
+    renren = None
+    # test_mapping_table = {'email':'name'}
+    pf = PeopleFinder(mc, renren)
+    ef = pf.create_email_network(local=True)
+    V, E = pf.create_social_network_pp(ef[0], local=True)
+    # pf.profile_results = pf.load_results('profile') # load profile-match results
+
+    # t0 = time.time()
+    # pf.run_pp('graph', 10)
+    # print 'costs %ss'%(time.time()-t0)
+
+    pftest = PeopleFinderTest(pf)
+    pftest.load_real_mapping('data/results/real_mapping.dat')
+    # pftest.test('PPGM')
+    pftest.visual_results()
+    # pftest.overlapped_edge()
+
 
